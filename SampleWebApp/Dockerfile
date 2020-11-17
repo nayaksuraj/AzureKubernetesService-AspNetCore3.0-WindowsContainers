@@ -11,7 +11,7 @@ FROM mcr.microsoft.com/dotnet/core/sdk:3.0 AS build
 WORKDIR /src
 COPY ["SampleWebApp.csproj", "SampleWebApp/"]
 
-RUN dotnet restore "SampleWebApp.csproj"
+RUN dotnet restore "SampleWebApp/SampleWebApp.csproj"
 COPY . .
 WORKDIR "/src/SampleWebApp"
 RUN dotnet build "SampleWebApp.csproj" -c Release -o /app
