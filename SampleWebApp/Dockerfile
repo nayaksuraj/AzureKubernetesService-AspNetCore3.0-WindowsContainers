@@ -12,7 +12,7 @@ WORKDIR /src
 COPY ["SampleWebApp.csproj", "SampleWebApp/"]
 
 RUN dotnet restore "SampleWebApp/SampleWebApp.csproj"
-COPY . .
+COPY . SampleWebApp/.
 WORKDIR "/src/SampleWebApp"
 RUN dotnet build "SampleWebApp/SampleWebApp.csproj" -c Release -o /app
 
