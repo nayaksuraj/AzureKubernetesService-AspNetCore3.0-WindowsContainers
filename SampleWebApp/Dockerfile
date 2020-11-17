@@ -36,7 +36,7 @@ RUN Import-Module WebAdministration; `
 
 RUN New-Website -Name 'SampleWebApp' `
                 -Port 80 -PhysicalPath 'C:\inetpub\wwwroot\SampleWebApp' `
-                -ApplicationPool 'ap-SampleWebApp' -force
+                -ApplicationPool 'ap-SampleWebApp' -force -HostHeader example.demo.app
 
 COPY --from=publish /app .
 
