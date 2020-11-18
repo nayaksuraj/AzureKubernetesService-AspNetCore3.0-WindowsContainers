@@ -1,43 +1,33 @@
 # escape=`
-FROM mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2019 as base
 
+FROM microsoft/windowsservercore AS installer
+SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-## Install dotnet 3.0.0-preview5 hosting pack
-SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'Continue'; $verbosePreference='Continue';"]
-ADD https://download.visualstudio.microsoft.com/download/pr/41483896-e029-40ff-b167-b4dde24153e1/ccd755c56bc8cfeb38ef816e54deb906/dotnet-hosting-3.0.0-preview5-19227-01-win.exe "C:/setup/dotnet-hosting-3.0.0-preview5-19227-01-win.exe"
-RUN start-process -Filepath "C:/setup/dotnet-hosting-3.0.0-preview5-19227-01-win.exe" -ArgumentList @('/install', '/quiet', '/norestart') -Wait 
-RUN Remove-Item -Force "C:/setup/dotnet-hosting-3.0.0-preview5-19227-01-win.exe"
+ENV UMBRACO_VERSION="7.6.0" `
+    UMBRACO_DOWNLOAD_ID="270489"
 
-FROM mcr.microsoft.com/dotnet/core/sdk:3.0 AS build
-WORKDIR /src
-COPY ["SampleWebApp.csproj", "SampleWebApp/"]
+RUN Invoke-WebRequest -UseBasicParsing -OutFile umbraco.zip -Uri "https://our.umbraco.org/ReleaseDownload?id=$($env:UMBRACO_DOWNLOAD_ID)"; `
+    Expand-Archive umbraco.zip -DestinationPath C:\umbraco
 
-RUN dotnet restore "SampleWebApp/SampleWebApp.csproj"
-COPY . .
-COPY ["Program.cs", "SampleWebApp/"]
-COPY ["Startup.cs", "SampleWebApp/"]
+# app image
+FROM microsoft/aspnet:windowsservercore-10.0.14393.1066
+SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-WORKDIR "/src/SampleWebApp"
-RUN dotnet build "SampleWebApp.csproj" -c Release -o /app
+ENV UMBRACO_VERSION="7.6.0" `
+    UMBRACO_ROOT="C:\inetpub\wwwroot\Umbraco"
 
-FROM build AS publish
-RUN dotnet publish "SampleWebApp.csproj" -c Release -o /app
+RUN Remove-Website 'Default Web Site'; `
+    New-Item -Path $env:UMBRACO_ROOT -Type Directory -Force; `
+    New-Website -Name 'umbraco' -PhysicalPath $env:UMBRACO_ROOT -Port 80 -Force; 
 
-FROM base AS final
-WORKDIR /inetpub/wwwroot/SampleWebApp
+HEALTHCHECK --interval=5s `
+ CMD powershell -command `
+    try { `
+     $response = iwr http://localhost/ -UseBasicParsing; `
+     if ($response.StatusCode -eq 200) { return 0} `
+     else {return 1}; `
+    } catch { return 1 }
 
-RUN Remove-Website -Name 'Default Web Site';
-
-RUN Import-Module WebAdministration; `
-    New-WebAppPool -Name 'ap-SampleWebApp'; `
-    Set-ItemProperty IIS:\AppPools\ap-SampleWebApp -Name managedRuntimeVersion -Value ''; `
-    Set-ItemProperty IIS:\AppPools\ap-SampleWebApp -Name enable32BitAppOnWin64 -Value 0; `
-    Set-ItemProperty -Path IIS:\AppPools\ap-SampleWebApp -Name processModel -value @{identitytype='LocalSystem'}
-
-RUN New-Website -Name 'SampleWebApp' `
-                -Port 80 -PhysicalPath 'C:\inetpub\wwwroot\SampleWebApp' `
-                -ApplicationPool 'ap-SampleWebApp' -force
-
-COPY --from=publish /app .
-
-EXPOSE 80
+COPY --from=installer C:\umbraco ${UMBRACO_ROOT}
+COPY Set-UmbracoAcl.ps1 C:\
+RUN C:\Set-UmbracoAcl.ps1
